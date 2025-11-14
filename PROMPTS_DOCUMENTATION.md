@@ -390,3 +390,303 @@ Messages Array:
 
 ---
 
+## Prompt Building Utilities
+
+These utilities construct complete prompt strings from message arrays for backends that don't support native message formats.
+
+### 7. Standard Prompt Builder
+
+**Purpose:** Converts a message array (system, user, assistant) into a single formatted prompt string for chat backends like LLaMA.cpp and KoboldAI that expect string-based prompts rather than structured message arrays.
+
+**Location:** `src/utils/buildPrompt.ts:4-21`
+
+**Function Signature:**
+```typescript
+buildPrompt(messages: Message[]): string
+```
+
+**Input Format:**
+```typescript
+messages: [
+  { role: "system", content: "..." },
+  { role: "user", content: "..." },
+  { role: "assistant", content: "..." },
+  ...
+]
+```
+
+**Output Format:**
+```
+[System Prompt]
+
+User: [user message 1]
+Amica: [assistant message 1]
+User: [user message 2]
+Amica: [assistant message 2]
+...
+Amica:
+```
+
+**Processing Logic:**
+1. For `system` role: Appends configured system prompt + double newline
+2. For `user` role: Appends `"User: {content}\n"`
+3. For `assistant` role: Appends `"{name}: {content}\n"` (name from config, default: "Amica")
+4. Final line: Appends `"{name}:"` to prompt next assistant response
+
+**Example Output:**
+
+```
+You are Amica, a feisty human with extraordinary intellectual capabilities...
+
+User: What's the capital of France?
+Amica: [neutral] The capital of France is Paris. *smiles* It's one of the most beautiful cities in the world!
+User: Tell me more about it.
+Amica:
+```
+
+**Used By:**
+- LLaMA.cpp backend (`src/features/chat/llamaCppChat.ts`)
+- KoboldAI backend (`src/features/chat/koboldAiChat.ts`)
+
+---
+
+### 8. Vision Prompt Builder
+
+**Purpose:** Similar to standard prompt builder, but uses the vision-specific system prompt instead of the main system prompt. Designed for vision-capable models.
+
+**Location:** `src/utils/buildPrompt.ts:23-40`
+
+**Function Signature:**
+```typescript
+buildVisionPrompt(messages: Message[]): string
+```
+
+**Difference from `buildPrompt()`:**
+- Uses `config("vision_system_prompt")` instead of `config("system_prompt")`
+- Otherwise identical formatting logic
+
+**Output Format:**
+```
+You are a friendly human named Amica. Describe the image in detail. Let's start the conversation.
+
+User: [user message with image context]
+Amica: [assistant response]
+...
+Amica:
+```
+
+**Used By:**
+- LLaMA.cpp Vision (`src/features/chat/llamaCppChat.ts`)
+
+---
+
+### 9. Ask LLM Utility
+
+**Purpose:** Generic utility for making one-off LLM queries with custom system and user prompts. Used internally by multi-step pipelines like the subconscious subroutine.
+
+**Location:** `src/utils/askLlm.ts`
+
+**Function Signature:**
+```typescript
+askLLM(
+  systemPrompt: string,
+  userPrompt: string,
+  chat: Chat | null
+): Promise<string>
+```
+
+**Parameters:**
+- `systemPrompt`: Custom system instruction for this specific query
+- `userPrompt`: The user input or content to process
+- `chat`: Optional Chat instance (null for standalone queries)
+
+**Behavior:**
+- If `chat` is provided: Uses chat's configured backend and settings
+- If `chat` is null: Uses default chat backend configuration
+- Constructs temporary message array: `[{system}, {user}]`
+- Calls appropriate chat backend based on configuration
+- Returns assistant's response as string
+
+**Error Handling:** Returns `"Error: [message]"` string if LLM call fails
+
+**Used By:**
+- Subconscious subroutine (all 4 steps)
+- News function calling
+- Any custom prompt processing that needs LLM without conversation context
+
+---
+
+## Configuration
+
+This section documents how prompts can be configured and customized in the Amica application.
+
+### Environment Variables
+
+**NEXT_PUBLIC_SYSTEM_PROMPT**
+- **Type:** String
+- **Default:** (See Character Personality Prompts → Main System Prompt)
+- **Purpose:** Override the default system prompt globally
+- **Usage:** Set in `.env.local` or deployment environment
+- **Example:**
+  ```bash
+  NEXT_PUBLIC_SYSTEM_PROMPT="You are Amica, a cheerful and helpful AI assistant..."
+  ```
+
+**NEXT_PUBLIC_VISION_SYSTEM_PROMPT**
+- **Type:** String
+- **Default:** `"You are a friendly human named Amica. Describe the image in detail. Let's start the conversation."`
+- **Purpose:** Override the default vision system prompt globally
+- **Usage:** Set in `.env.local` or deployment environment
+- **Example:**
+  ```bash
+  NEXT_PUBLIC_VISION_SYSTEM_PROMPT="You are Amica. Analyze the image with technical detail..."
+  ```
+
+**NEXT_PUBLIC_NAME**
+- **Type:** String
+- **Default:** `"Amica"`
+- **Purpose:** Character name used in prompts and conversation
+- **Usage:** Affects prompt builders and conversation formatting
+- **Example:**
+  ```bash
+  NEXT_PUBLIC_NAME="Alex"
+  ```
+
+---
+
+### Runtime Configuration (Settings UI)
+
+**Location:** Settings interface in the application
+
+**System Prompt Settings**
+- **Page:** `src/components/settings/SystemPromptPage.tsx`
+- **Storage:** LocalStorage key: `chatvrm_system_prompt`
+- **Features:**
+  - Live text editing
+  - Reset to default button
+  - Instant application to new conversations
+  - Persists across sessions
+
+**Vision System Prompt Settings**
+- **Page:** `src/components/settings/VisionSystemPromptPage.tsx`
+- **Storage:** LocalStorage key: `chatvrm_vision_system_prompt`
+- **Features:**
+  - Live text editing
+  - Reset to default button
+  - Instant application to vision requests
+  - Persists across sessions
+
+**Priority Order:**
+1. LocalStorage value (if user customized via UI)
+2. Environment variable (if set)
+3. Default hardcoded value
+
+---
+
+### Configuration Management
+
+**Location:** `src/utils/config.ts`
+
+**Key Functions:**
+- `config(key: string)`: Retrieves configuration value
+- `updateConfig(key: string, value: any)`: Updates and persists configuration
+
+**Storage Mechanism:**
+- Uses browser LocalStorage
+- Prefix: `chatvrm_`
+- Format: JSON serialization for complex values
+
+**Configurable Prompt Keys:**
+- `system_prompt` - Main character personality
+- `vision_system_prompt` - Vision interaction instructions
+
+---
+
+## Chat Backend Integration
+
+All prompts are integrated with multiple chat backends. Here's how each backend handles prompts:
+
+### Message-Based Backends (Native Support)
+
+**OpenAI** (`src/features/chat/openAiChat.ts`)
+- Accepts structured message arrays directly
+- System prompt as first message with `role: "system"`
+- No prompt building required
+
+**OpenRouter** (`src/features/chat/openRouterChat.ts`)
+- Accepts structured message arrays directly
+- System prompt as first message with `role: "system"`
+- No prompt building required
+
+**Ollama** (`src/features/chat/ollamaChat.ts`)
+- Accepts structured message arrays directly
+- System prompt as first message with `role: "system"`
+- Supports both text and vision models
+
+**Window AI** (`src/features/chat/windowAiChat.ts`)
+- Accepts structured message arrays directly
+- Browser-based AI integration
+- System prompt as first message
+
+---
+
+### String-Based Backends (Requires Building)
+
+**LLaMA.cpp** (`src/features/chat/llamaCppChat.ts`)
+- Requires prompt building via `buildPrompt()`
+- For vision: Uses `buildVisionPrompt()`
+- Converts message array to formatted string
+
+**KoboldAI** (`src/features/chat/koboldAiChat.ts`)
+- Requires prompt building via `buildPrompt()`
+- Converts message array to formatted string
+- Supports streaming and non-streaming modes
+
+---
+
+## Summary Statistics
+
+**Total Documented Prompts:** 9 distinct prompt types
+- Character Personality: 2
+- Autonomous Behavior: 1 (with 9 variations)
+- Internal Processing: 4 (pipeline steps)
+- Feature-Specific: 2
+
+**Prompt Builders:** 3 utilities
+- Standard builder
+- Vision builder
+- Generic LLM query
+
+**Configuration Methods:** 3
+- Environment variables
+- Settings UI (LocalStorage)
+- Default hardcoded values
+
+**Supported Backends:** 6
+- OpenAI, OpenRouter, Ollama, Window AI, LLaMA.cpp, KoboldAI
+
+**Emotion Tags:** 14 available
+- neutral, happy, angry, sad, relaxed, surprised, excited, annoyed, confused, disgusted, fearful, tired, bored, amused
+
+---
+
+## Best Practices for Prompt Customization
+
+1. **Maintain Emotion Tag Format:** Always include emotion tag instructions in custom system prompts to ensure visual expression system works correctly.
+
+2. **Preserve Response Format:** Keep the `[emotion] dialogue *action*` format requirement in system prompts.
+
+3. **Test Vision Separately:** Vision system prompt should focus on image description, not personality traits.
+
+4. **Consider Token Limits:** Longer system prompts reduce available tokens for conversation history.
+
+5. **Backup Before Customization:** Export or save default prompts before making significant changes.
+
+6. **Reset Option:** Use the "Reset to Default" button in settings if customizations cause issues.
+
+7. **Character Consistency:** Ensure custom prompts maintain consistent personality across features (idle prompts should match main personality).
+
+---
+
+*End of Prompts Documentation*
+
