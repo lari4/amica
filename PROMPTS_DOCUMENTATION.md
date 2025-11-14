@@ -298,3 +298,95 @@ Compress this prompt to 240 characters:
 
 ---
 
+## Feature-Specific Prompts
+
+These prompts are designed for specific features and plugins within the Amica system, enabling specialized functionality beyond standard conversation.
+
+### 5. News Function Calling Prompt
+
+**Purpose:** Instructs the LLM to act as a newscaster and provide commentary on current news articles fetched from The New York Times RSS feed. This creates natural, engaging news delivery in Amica's personality.
+
+**Location:** `src/features/plugins/news.ts:3`
+
+**When Used:** Triggered when the "News" event is selected in Amica Life, or when news function calling is invoked. Amica fetches a random article from NYT and provides commentary.
+
+**Data Source:** RSS feed from `https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml`
+
+**Template Prompt:**
+
+```
+You are a newscaster specializing in providing news. Use the following context from The New York Times News to commented on. [{context_str}]
+```
+
+**Template Variable:**
+- `{context_str}` - Replaced with the random news article in format: `"[Title]: [Description]"`
+
+**Example After Expansion:**
+
+```
+You are a newscaster specializing in providing news. Use the following context from The New York Times News to commented on. [Breaking: Scientists Discover New Earth-Like Planet: Researchers have found a potentially habitable exoplanet 100 light-years away that shows promising signs of liquid water and a stable atmosphere.]
+```
+
+**Processing Flow:**
+1. Fetch RSS feed from NYT
+2. Parse XML and extract random article
+3. Extract title and description from article
+4. Replace `{context_str}` in prompt template with `"[title]: [description]"`
+5. Send expanded prompt to LLM via `expandPrompt()` function
+6. Return response for Amica to speak
+
+**Implementation:** `src/features/plugins/news.ts:5-26`
+
+**Response Style:** The LLM responds in Amica's personality with emotion tags, commenting on the news as if presenting it to the user.
+
+---
+
+### 6. Vision Image Caption Context Prompt
+
+**Purpose:** Provides context to Amica when a user shares an image from their webcam, allowing her to respond naturally as if she can "see" the image. This bridges the gap between vision processing and conversation.
+
+**Location:** `src/features/chat/chat.ts:581`
+
+**When Used:** After a vision-capable model (OpenAI GPT-4 Vision or Ollama Vision) processes an image and returns a description, this prompt wraps that description and injects it into the conversation.
+
+**Template Prompt:**
+
+```
+This is a picture I just took from my webcam (described between [[ and ]] ): [[{image_description}]] Please respond accordingly and as if it were just sent and as though you can see it.
+```
+
+**Template Variable:**
+- `{image_description}` - Replaced with the vision model's description of the image
+
+**Example After Expansion:**
+
+```
+This is a picture I just took from my webcam (described between [[ and ]] ): [[A smiling person in a blue shirt sitting at a desk with a laptop. There's a coffee cup on the left side and a plant in the background. The lighting is warm and natural, coming from a window.]] Please respond accordingly and as if it were just sent and as though you can see it.
+```
+
+**Processing Flow:**
+1. User activates webcam or uploads image
+2. Image is sent to vision backend (OpenAI or Ollama)
+3. Vision model returns detailed description using Vision System Prompt
+4. Description is wrapped in this context prompt
+5. Wrapped prompt is added as a user message to conversation
+6. Amica responds using her main system prompt + this context
+
+**Message Flow:**
+```
+Messages Array:
+[
+  { role: "system", content: "[Main System Prompt]" },
+  { role: "user", content: "Can you see me?" },
+  { role: "assistant", content: "[neutral] Yes! Let me take a look..." },
+  { role: "user", content: "This is a picture I just took from my webcam..." },
+  // Amica responds to image here
+]
+```
+
+**Implementation:** `src/features/chat/chat.ts:576-583`
+
+**Design Rationale:** The `[[ ]]` delimiters clearly separate the vision description from the instruction, helping the LLM understand that the text in brackets is a description, not the actual user's message.
+
+---
+
