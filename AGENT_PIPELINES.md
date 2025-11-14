@@ -383,3 +383,196 @@ response: string = "[happy] Oh, you look great in that blue shirt! *waves* I see
 
 ---
 
+## Idle Event Pipeline
+
+**Purpose:** Enables autonomous behavior by having Amica initiate conversations when the user has been inactive, creating a more lifelike and engaging experience.
+
+**Trigger:** User inactivity for configured idle timeout period (when Amica Life is enabled)
+
+**Location:** `src/features/amicaLife/eventHandler.ts:89-107`
+
+### Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                      USER INACTIVITY                                │
+│  No messages sent for X seconds (configurable)                      │
+│  Idle timer expires                                                  │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  AMICA LIFE ENABLED CHECK                           │
+│  if (config.amica_life !== true) → Exit                            │
+│  if (eventProcessing === true) → Exit (already processing)         │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                 RANDOM IDLE PROMPT SELECTION                        │
+│  idleTextPrompts = [                                                │
+│    "*I am ignoring you*",                                           │
+│    "**sighs** It's so quiet here.",                                 │
+│    "Tell me something interesting about yourself.",                 │
+│    "**looks around** What do you usually do for fun?",             │
+│    "I could use a good distraction right now.",                     │
+│    "What's the most fascinating thing you know?",                   │
+│    "If you could talk about anything, what would it be?",          │
+│    "Got any clever insights to share?",                             │
+│    "**leans in** Any fun stories to tell?"                         │
+│  ]                                                                   │
+│                                                                      │
+│  selectedPrompt = random.choice(idleTextPrompts)                    │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              MESSAGE CONSTRUCTION (AS USER)                         │
+│  Creates message array simulating user input:                       │
+│  [                                                                   │
+│    { role: "system", content: [Main System Prompt] },              │
+│    ...existingConversation,                                         │
+│    {                                                                 │
+│      role: "user",                                                  │
+│      content: selectedPrompt                                        │
+│      // e.g., "Tell me something interesting about yourself."      │
+│    }                                                                 │
+│  ]                                                                   │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  STANDARD CHAT PROCESSING                           │
+│  Calls: chat.processUserMessage(selectedPrompt)                     │
+│  Treats idle prompt as if user typed it                             │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      LLM RESPONSE                                   │
+│  Amica responds to the self-generated prompt:                       │
+│  "[relaxed] Well, I find quantum mechanics absolutely              │
+│   fascinating! *adjusts glasses* The idea that particles can       │
+│   exist in superposition until observed is mind-bending."          │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  STANDARD OUTPUT PROCESSING                         │
+│  • Parse emotions and actions                                       │
+│  • Generate TTS                                                      │
+│  • Update avatar                                                     │
+│  • Display in chat                                                   │
+│  • Add to conversation history                                      │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    RESET IDLE TIMER                                 │
+│  Timer resets, waiting for next idle period                         │
+│  eventProcessing = false                                             │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Data Transformations
+
+**Input (Random Selection):**
+```typescript
+selectedPrompt: string = "Tell me something interesting about yourself."
+// Randomly chosen from idleTextPrompts array
+```
+
+**Message Array Construction:**
+```typescript
+messages: Message[] = [
+  { role: "system", content: "You are Amica, a feisty human..." },
+  { role: "user", content: "How are you?" },
+  { role: "assistant", content: "[happy] I'm doing great! How about you?" },
+  { role: "user", content: "Tell me something interesting about yourself." }
+  // ^ This is the idle prompt, injected as if user sent it
+]
+```
+
+**LLM Response:**
+```typescript
+response: string = "[relaxed] Well, I find quantum mechanics absolutely fascinating! *adjusts glasses* The idea that particles can exist in superposition until observed is mind-bending."
+```
+
+**Conversation History Update:**
+```typescript
+// Both the idle prompt AND response are added to history
+messageList.push({
+  role: "user",
+  content: "Tell me something interesting about yourself."
+});
+
+messageList.push({
+  role: "assistant",
+  content: "[relaxed] Well, I find quantum mechanics..."
+});
+```
+
+### Key Functions
+
+- `handleIdleEvent(chat, amicaLife)` - Entry point (src/features/amicaLife/eventHandler.ts:89)
+- `chat.processUserMessage(prompt)` - Standard chat processing (src/features/chat/chat.ts:258)
+- Idle timer logic in `src/features/amicaLife/AmicaLife.ts`
+
+### Configuration Dependencies
+
+- `amica_life` - Must be enabled (boolean)
+- `idle_timeout` - Seconds of inactivity before triggering (number)
+- `system_prompt` - Used for response generation
+- `chat_backend` - Which LLM to use
+
+### Behavioral Characteristics
+
+**Randomization:**
+- Each idle event randomly selects from 9 different prompts
+- Creates variety in self-initiated interactions
+- Prevents repetitive behavior
+
+**Conversation Integration:**
+- Idle prompts are treated as actual user messages
+- They become part of conversation history
+- Responses reference previous context if relevant
+
+**Timing Control:**
+- Configurable idle timeout period
+- Prevents spam by checking `eventProcessing` flag
+- Resets timer after each interaction
+
+**Event Types:**
+Currently only "Idle" event type is implemented in idle handler. Other event types (Subconscious, News) use separate handlers.
+
+### Design Pattern: Self-Prompting
+
+This pipeline uses a "self-prompting" pattern where:
+1. System generates a prompt internally
+2. Injects it as a user message
+3. Processes through standard chat pipeline
+4. Appears to user as if Amica spontaneously spoke
+
+**Benefits:**
+- Reuses existing chat infrastructure
+- Maintains conversation coherence
+- Enables contextual self-initiated dialogue
+- Simulates autonomous thought
+
+**Example Interaction Flow:**
+
+```
+User: "How are you?"
+Amica: "[happy] I'm doing great! Thanks for asking."
+
+[30 seconds of inactivity]
+
+Amica: "[bored] **sighs** It's so quiet here."
+       (Self-initiated from idle prompt)
+
+User: "Sorry, I was reading."
+Amica: "[relaxed] No worries! What are you reading?"
+```
+
+---
+
