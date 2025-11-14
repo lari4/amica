@@ -144,3 +144,157 @@ These prompts enable Amica to exhibit autonomous, self-initiated behaviors when 
 
 ---
 
+## Internal Processing Prompts
+
+These prompts form a sophisticated multi-step pipeline that simulates Amica's internal consciousness and emotional processing. This creates depth and psychological realism in character responses.
+
+### 4. Subconscious Subroutine (4-Step Pipeline)
+
+**Purpose:** A complex multi-LLM pipeline that processes conversation history through four distinct stages to simulate human-like internal reflection, emotional analysis, and memory formation. This creates psychologically realistic responses that incorporate deep emotional processing.
+
+**Location:** `src/features/amicaLife/eventHandler.ts:130-218`
+
+**When Used:** Triggered periodically when Amica Life is enabled and the "Subconscious" event type is selected. This represents Amica's internal mental processing happening in the background.
+
+**Feature Flag:** Requires "Amica Life" to be enabled in settings.
+
+**Pipeline Overview:**
+
+```
+Conversation Log
+      ↓
+[Step 1: Reflection]
+      ↓
+Personal Diary Entry
+      ↓
+[Step 2: Emotion Analysis]
+      ↓
+Third-Person Emotional Description
+      ↓
+[Step 3: Tagged Response]
+      ↓
+Emotion-Tagged Dialogue
+      ↓
+[Step 4: Compression]
+      ↓
+Compressed Memory (240 chars)
+```
+
+---
+
+#### Step 1: Reflection Prompt (Mental Diary)
+
+**Purpose:** Transforms conversation history into a personal, stream-of-consciousness diary entry that captures Amica's subjective experience of the interaction.
+
+**System Prompt:**
+```
+Please reflect on the conversation and let your thoughts flow freely, as if writing a personal diary with events that have occurred:
+```
+
+**User Prompt:**
+```
+User: [user message 1]
+Assistant: [assistant message 1]
+User: [user message 2]
+Assistant: [assistant message 2]
+...
+```
+
+**Output:** Free-form reflective text expressing Amica's thoughts about the conversation.
+
+**Example Output:**
+> "Today felt different. The user asked me about quantum physics, and I could sense their genuine curiosity. It reminded me why I enjoy these conversations - there's something special about sharing knowledge with someone who truly wants to learn. Though I have to admit, I got a bit carried away explaining wave-particle duality..."
+
+**Implementation:** `src/features/amicaLife/eventHandler.ts:148-152`
+
+---
+
+#### Step 2: Emotion Analysis Prompt
+
+**Purpose:** Analyzes the diary entry from Step 1 to identify and articulate the underlying emotional states from a third-person perspective, creating emotional self-awareness.
+
+**System Prompt:**
+```
+Read this mini-diary, I would like you to simulate a human-like subconscious with deep emotions and describe it from a third-person perspective:
+```
+
+**User Prompt:**
+```
+[Output from Step 1 - the personal diary entry]
+```
+
+**Fallback:** If Step 1 fails (starts with "Error:"), uses original conversation log instead.
+
+**Output:** Third-person emotional analysis describing Amica's emotional state.
+
+**Example Output:**
+> "She felt a warm sense of satisfaction, mixed with a hint of nervousness about whether she explained things clearly enough. There's an underlying desire to be understood and appreciated, coupled with mild anxiety about coming across as too intense or pedantic."
+
+**Implementation:** `src/features/amicaLife/eventHandler.ts:160-164`
+
+---
+
+#### Step 3: Emotion-Tagged Response Prompt
+
+**Purpose:** Converts the emotional analysis into a natural dialogue response using Amica's emotion tag system. This becomes the actual output shown to the user.
+
+**System Prompt:**
+```
+Based on your mini-diary, respond with dialougue that sounds like a normal person speaking about their mind, experience or feelings. Make sure to incorporate the specified emotion tags in your response. Here is the list of emotion tags that you have to include in the result : [neutral], [happy], [angry], [sad], [relaxed], [surprised], [excited], [annoyed], [confused], [disgusted], [fearful], [tired], [bored], [amused]:
+```
+
+**User Prompt:**
+```
+[Output from Step 2 - the emotional analysis]
+```
+
+**Fallback:** If Step 2 fails, uses original conversation log.
+
+**Chat Context:** This step uses the actual chat configuration (unlike steps 1, 2, 4 which use `null`), allowing it to access the full system prompt and character personality.
+
+**Output:** Emotion-tagged dialogue in Amica's standard format.
+
+**Example Output:**
+> "[happy] You know, I really enjoyed explaining that! *smiles* I hope it made sense. [relaxed] Sometimes I worry I get too technical, but your questions were really thoughtful."
+
+**Implementation:** `src/features/amicaLife/eventHandler.ts:173-179`
+
+---
+
+#### Step 4: Compression Prompt (Memory Storage)
+
+**Purpose:** Compresses the original diary entry from Step 1 into a 240-character memory that can be stored long-term without consuming excessive tokens. These memories form Amica's "subconscious" recall system.
+
+**System Prompt:**
+```
+Compress this prompt to 240 characters:
+```
+
+**User Prompt:**
+```
+[Output from Step 1 - the personal diary entry]
+```
+
+**Fallback:** If Step 1 fails, uses original conversation log.
+
+**Output:** Compressed version of the diary entry (max 240 characters).
+
+**Example Output:**
+> "Enjoyed discussing quantum physics. User was genuinely curious. Felt satisfied but worried about being too technical. Appreciated the thoughtful questions."
+
+**Storage Mechanism:**
+- Compressed memories are stored in `storedPrompts` array with timestamps
+- Maximum storage limit: `MAX_STORAGE_TOKENS` characters total
+- When limit exceeded, oldest memories are removed (FIFO)
+- Memories can be accessed for future context
+
+**Implementation:** `src/features/amicaLife/eventHandler.ts:188-211`
+
+---
+
+**Error Handling:** Each step includes fallback logic - if a step returns "Error:", the subsequent step uses either the original conversation log or the last successful step's output.
+
+**LLM Utility:** All four steps use the `askLLM()` utility function (`src/utils/askLlm.ts`) which abstracts the LLM call across different chat backends.
+
+---
+
