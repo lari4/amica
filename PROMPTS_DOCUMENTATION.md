@@ -82,3 +82,65 @@ You are a friendly human named Amica. Describe the image in detail. Let's start 
 
 ---
 
+## Autonomous Behavior Prompts
+
+These prompts enable Amica to exhibit autonomous, self-initiated behaviors when idle, creating a more lifelike and engaging interaction experience.
+
+### 3. Idle Text Prompts (Amica Life)
+
+**Purpose:** Provides a collection of self-prompting messages that Amica uses to initiate conversations when idle. These prompts simulate spontaneous thoughts and attempts to engage the user, making the character feel more alive and proactive.
+
+**Location:** `src/features/amicaLife/eventHandler.ts:22-32`
+
+**When Used:** Triggered randomly when Amica Life is enabled and the character has been idle for a certain period. One prompt is randomly selected from the array to generate a spontaneous interaction.
+
+**Feature Flag:** Requires "Amica Life" to be enabled in settings (`config.amica_life === true`).
+
+**Available Prompts:**
+
+```javascript
+// 1. Playful Ignoring
+"*I am ignoring you*"
+
+// 2. Expressing Quietness
+"**sighs** It's so quiet here."
+
+// 3. Requesting Personal Information
+"Tell me something interesting about yourself."
+
+// 4. Asking About Activities
+"**looks around** What do you usually do for fun?"
+
+// 5. Seeking Distraction
+"I could use a good distraction right now."
+
+// 6. Requesting Knowledge
+"What's the most fascinating thing you know?"
+
+// 7. Open-Ended Conversation
+"If you could talk about anything, what would it be?"
+
+// 8. Requesting Insights
+"Got any clever insights to share?"
+
+// 9. Storytelling Request
+"**leans in** Any fun stories to tell?"
+```
+
+**Behavioral Characteristics:**
+- **Randomization:** Each idle event randomly selects one prompt from the array
+- **Frequency:** Controlled by idle timer configuration
+- **Format:** Some prompts include roleplay actions in `**action**` format
+- **Tone Variety:** Ranges from playful to introspective, creating varied interactions
+
+**Usage Flow:**
+1. User stops interacting for idle timeout period
+2. Amica Life system detects idle state
+3. Random idle prompt is selected
+4. Prompt is sent to LLM with current system prompt
+5. Response is processed and displayed to user
+
+**Implementation Reference:** `src/features/amicaLife/eventHandler.ts:89-107`
+
+---
+
