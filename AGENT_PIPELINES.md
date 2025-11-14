@@ -181,3 +181,205 @@ screenplay: Screenplay[] = [
 
 ---
 
+## Vision Processing Pipeline
+
+**Purpose:** Processes images from the user's webcam or uploaded photos, generates descriptions, and enables natural conversation about what Amica "sees".
+
+**Trigger:** User clicks camera button or uploads an image
+
+**Location:** `src/features/chat/chat.ts:543-588`
+
+### Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                      IMAGE CAPTURE                                  │
+│  User action:                                                        │
+│  • Webcam snapshot, OR                                              │
+│  • File upload                                                       │
+│  Result: Base64 encoded image data                                  │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  VISION BACKEND SELECTION                           │
+│  Checks config:                                                      │
+│  • vision_backend = "openai" → GPT-4 Vision                         │
+│  • vision_backend = "ollama" → Ollama Vision                        │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  VISION PROMPT CONSTRUCTION                         │
+│  Messages array for vision model:                                   │
+│  [                                                                   │
+│    {                                                                 │
+│      role: "system",                                                │
+│      content: config("vision_system_prompt")                        │
+│      // "You are a friendly human named Amica.                      │
+│      //  Describe the image in detail..."                           │
+│    },                                                                │
+│    {                                                                 │
+│      role: "user",                                                  │
+│      content: [                                                      │
+│        { type: "image", image_url: "data:image/jpeg;base64,..." }  │
+│      ]                                                               │
+│    }                                                                 │
+│  ]                                                                   │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   VISION MODEL API CALL                             │
+│  OpenAI: getOpenAIVisionChatResponse()                              │
+│  OR                                                                  │
+│  Ollama: getOllamaVisionChatResponse()                              │
+│                                                                      │
+│  Sends: vision_system_prompt + image data                           │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   VISION MODEL RESPONSE                             │
+│  Detailed image description:                                        │
+│  "A smiling person in a blue shirt sitting at a desk with a        │
+│   laptop. There's a coffee cup on the left side and a plant in     │
+│   the background. The lighting is warm and natural, coming from    │
+│   a window."                                                         │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              VISION CONTEXT PROMPT WRAPPING                         │
+│  Wraps description in context prompt:                               │
+│  "This is a picture I just took from my webcam (described          │
+│   between [[ and ]] ): [[A smiling person in a blue shirt...]]    │
+│   Please respond accordingly and as if it were just sent and       │
+│   as though you can see it."                                        │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│            INJECT INTO STANDARD CHAT PIPELINE                       │
+│  Creates new message array:                                         │
+│  [                                                                   │
+│    { role: "system", content: [Main System Prompt] },              │
+│    ...previousMessages,                                             │
+│    {                                                                 │
+│      role: "user",                                                  │
+│      content: "This is a picture I just took from my webcam..."    │
+│    }                                                                 │
+│  ]                                                                   │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  STANDARD CHAT PROCESSING                           │
+│  Calls: makeAndHandleStream(messages)                               │
+│  Uses: Main System Prompt (NOT vision prompt)                       │
+│  Result: Amica responds in character to the image                   │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      AMICA'S RESPONSE                               │
+│  "[happy] Oh, you look great in that blue shirt! *waves*           │
+│   I see you're working hard at your desk. That's a nice plant      │
+│   you have there!"                                                   │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              STANDARD OUTPUT PROCESSING                             │
+│  • Extract emotions                                                  │
+│  • Generate TTS                                                      │
+│  • Update avatar expression                                         │
+│  • Display in chat                                                   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Two-Stage LLM Processing
+
+**Stage 1: Vision Analysis (Vision Model)**
+- **Input:** Image data + Vision System Prompt
+- **Model:** GPT-4 Vision or Ollama Vision
+- **Purpose:** Describe the image objectively
+- **Output:** Detailed image description (text only)
+
+**Stage 2: Character Response (Chat Model)**
+- **Input:** Wrapped description + Main System Prompt
+- **Model:** Regular chat model (GPT-4, Claude, Ollama, etc.)
+- **Purpose:** Respond to image in character with personality
+- **Output:** Emotion-tagged dialogue
+
+### Data Transformations
+
+**Stage 1 Input (Vision Model):**
+```typescript
+messages: [
+  {
+    role: "system",
+    content: "You are a friendly human named Amica. Describe the image in detail. Let's start the conversation."
+  },
+  {
+    role: "user",
+    content: [
+      { type: "image", image_url: "data:image/jpeg;base64,/9j/4AAQSkZJRg..." }
+    ]
+  }
+]
+```
+
+**Stage 1 Output:**
+```typescript
+visionDescription: string = "A smiling person in a blue shirt sitting at a desk with a laptop. There's a coffee cup on the left side and a plant in the background. The lighting is warm and natural, coming from a window."
+```
+
+**Stage 2 Input (Chat Model):**
+```typescript
+messages: [
+  {
+    role: "system",
+    content: "You are Amica, a feisty human with extraordinary intellectual capabilities..."
+  },
+  {
+    role: "user",
+    content: "This is a picture I just took from my webcam (described between [[ and ]] ): [[A smiling person in a blue shirt sitting at a desk with a laptop. There's a coffee cup on the left side and a plant in the background. The lighting is warm and natural, coming from a window.]] Please respond accordingly and as if it were just sent and as though you can see it."
+  }
+]
+```
+
+**Stage 2 Output:**
+```typescript
+response: string = "[happy] Oh, you look great in that blue shirt! *waves* I see you're working hard at your desk. That's a nice plant you have there!"
+```
+
+### Key Functions
+
+- `chat.getVisionResponse(imageData)` - Entry point (src/features/chat/chat.ts:543)
+- `getOpenAIVisionChatResponse(messages, imageData)` - OpenAI vision (src/features/chat/openAiChat.ts)
+- `getOllamaVisionChatResponse(messages, imageData)` - Ollama vision (src/features/chat/ollamaChat.ts)
+- `chat.makeAndHandleStream(messages)` - Stage 2 processing (src/features/chat/chat.ts:336)
+
+### Configuration Dependencies
+
+- `vision_backend` - "openai" or "ollama"
+- `vision_system_prompt` - Vision description instructions
+- `system_prompt` - Main character personality (used in Stage 2)
+- `openai_api_key` or Ollama configuration
+
+### Design Rationale
+
+**Why Two Stages?**
+1. **Separation of Concerns:** Vision models excel at image description, chat models excel at personality
+2. **Backend Flexibility:** Vision backend can differ from chat backend
+3. **Prompt Isolation:** Vision prompt focuses on objective description, chat prompt adds personality
+4. **Context Preservation:** Image description becomes part of conversation history
+
+**Why Wrap Description in `[[ ]]`?**
+- Clearly delimits the vision model's output from the instruction
+- Helps chat model understand it's reading a description, not the user's direct message
+- Prevents confusion between meta-information and actual user input
+
+---
+
