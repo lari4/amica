@@ -576,3 +576,331 @@ Amica: "[relaxed] No worries! What are you reading?"
 
 ---
 
+## Subconscious Subroutine Pipeline
+
+**Purpose:** Simulates deep internal psychological processing through a multi-stage LLM pipeline that creates reflective thoughts, emotional analysis, and compressed memories. This adds psychological depth and creates authentic emotional responses.
+
+**Trigger:** Periodic event when Amica Life is enabled and "Subconscious" event type is selected
+
+**Location:** `src/features/amicaLife/eventHandler.ts:130-218`
+
+### Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    CONVERSATION HISTORY                             │
+│  Extract full conversation log:                                     │
+│  "User: How are you?\n                                              │
+│   Assistant: [happy] I'm great!\n                                   │
+│   User: Tell me about AI\n                                          │
+│   Assistant: [excited] AI is fascinating!..."                       │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  STEP 1: REFLECTION (Diary Entry)                   │
+│                                                                      │
+│  System Prompt:                                                      │
+│  "Please reflect on the conversation and let your thoughts          │
+│   flow freely, as if writing a personal diary with events           │
+│   that have occurred:"                                              │
+│                                                                      │
+│  User Prompt: [Conversation Log]                                    │
+│                                                                      │
+│  LLM Call: askLLM(systemPrompt, conversationLog, null)             │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  STEP 1 OUTPUT (Diary Entry)                        │
+│  "Today felt different. The user asked me about AI, and I could    │
+│   sense their genuine curiosity. It reminded me why I enjoy         │
+│   these conversations - there's something special about sharing     │
+│   knowledge. Though I have to admit, I got a bit carried away..."  │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│            STEP 2: EMOTION ANALYSIS (3rd Person)                    │
+│                                                                      │
+│  System Prompt:                                                      │
+│  "Read this mini-diary, I would like you to simulate a             │
+│   human-like subconscious with deep emotions and describe           │
+│   it from a third-person perspective:"                              │
+│                                                                      │
+│  User Prompt: [Step 1 Output - Diary Entry]                        │
+│  (Fallback: If Step 1 failed, use conversation log)                │
+│                                                                      │
+│  LLM Call: askLLM(systemPrompt, diaryEntry, null)                  │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│            STEP 2 OUTPUT (Emotional Description)                    │
+│  "She felt a warm sense of satisfaction, mixed with a hint of      │
+│   nervousness about whether she explained things clearly enough.   │
+│   There's an underlying desire to be understood and appreciated,   │
+│   coupled with mild anxiety about coming across as too intense     │
+│   or pedantic."                                                      │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│         STEP 3: EMOTION-TAGGED RESPONSE (1st Person)                │
+│                                                                      │
+│  System Prompt:                                                      │
+│  "Based on your mini-diary, respond with dialogue that sounds      │
+│   like a normal person speaking about their mind, experience or    │
+│   feelings. Make sure to incorporate the specified emotion tags    │
+│   in your response. Here is the list of emotion tags that you      │
+│   have to include in the result: [neutral], [happy], [angry],     │
+│   [sad], [relaxed], [surprised], [excited], [annoyed],            │
+│   [confused], [disgusted], [fearful], [tired], [bored],           │
+│   [amused]:"                                                         │
+│                                                                      │
+│  User Prompt: [Step 2 Output - Emotional Description]              │
+│  (Fallback: If Step 2 failed, use conversation log)                │
+│                                                                      │
+│  LLM Call: askLLM(systemPrompt, emotionalDesc, chat)               │
+│  NOTE: Uses 'chat' object (includes full system prompt!)           │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│            STEP 3 OUTPUT (Tagged Dialogue)                          │
+│  "[happy] You know, I really enjoyed explaining that! *smiles*     │
+│   I hope it made sense. [relaxed] Sometimes I worry I get too      │
+│   technical, but your questions were really thoughtful."           │
+│                                                                      │
+│  → This is what the USER SEES/HEARS ←                              │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              STEP 4: COMPRESSION (Memory Storage)                   │
+│                                                                      │
+│  System Prompt:                                                      │
+│  "Compress this prompt to 240 characters:"                          │
+│                                                                      │
+│  User Prompt: [Step 1 Output - Original Diary Entry]               │
+│  (Fallback: If Step 1 failed, use conversation log)                │
+│                                                                      │
+│  LLM Call: askLLM(systemPrompt, diaryEntry, null)                  │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│            STEP 4 OUTPUT (Compressed Memory)                        │
+│  "Enjoyed discussing quantum physics. User was genuinely           │
+│   curious. Felt satisfied but worried about being too technical.   │
+│   Appreciated the thoughtful questions."                            │
+│                                                                      │
+│  Length: ≤ 240 characters                                           │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   MEMORY STORAGE SYSTEM                             │
+│                                                                      │
+│  1. Create timestamped memory:                                      │
+│     {                                                                │
+│       prompt: "[compressed memory]",                                │
+│       timestamp: "2025-11-14T10:30:00Z"                            │
+│     }                                                                │
+│                                                                      │
+│  2. Add to storedPrompts array                                      │
+│                                                                      │
+│  3. Check total storage tokens:                                     │
+│     totalTokens = sum(all prompts.length)                           │
+│                                                                      │
+│  4. If totalTokens > MAX_STORAGE_TOKENS:                            │
+│     Remove oldest memories (FIFO) until under limit                │
+│                                                                      │
+│  5. Save to AmicaLife subconscious logs                             │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   OUTPUT TO USER INTERFACE                          │
+│  • Display Step 3 output (emotion-tagged dialogue)                  │
+│  • Generate TTS                                                      │
+│  • Update avatar expression                                         │
+│  • Add to conversation history                                      │
+│  • Log compressed memory to console                                 │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Multi-Stage Data Flow
+
+**Initial Input:**
+```typescript
+conversationLog: string =
+`User: How are you?
+Assistant: [happy] I'm great!
+User: Tell me about AI
+Assistant: [excited] AI is fascinating! It encompasses machine learning...`
+```
+
+**Stage 1 → 2:**
+```typescript
+// Stage 1 Output (Diary)
+diaryEntry: string =
+"Today felt different. The user asked me about AI, and I could sense their genuine curiosity. It reminded me why I enjoy these conversations - there's something special about sharing knowledge with someone who truly wants to learn. Though I have to admit, I got a bit carried away explaining wave-particle duality..."
+
+// Becomes Stage 2 Input
+```
+
+**Stage 2 → 3:**
+```typescript
+// Stage 2 Output (Emotional Analysis)
+emotionalAnalysis: string =
+"She felt a warm sense of satisfaction, mixed with a hint of nervousness about whether she explained things clearly enough. There's an underlying desire to be understood and appreciated, coupled with mild anxiety about coming across as too intense or pedantic."
+
+// Becomes Stage 3 Input
+```
+
+**Stage 3 Output (Final User-Facing Response):**
+```typescript
+emotionTaggedResponse: string =
+"[happy] You know, I really enjoyed explaining that! *smiles* I hope it made sense. [relaxed] Sometimes I worry I get too technical, but your questions were really thoughtful."
+```
+
+**Stage 4 Output (Stored Memory):**
+```typescript
+compressedMemory: TimestampedPrompt = {
+  prompt: "Enjoyed discussing quantum physics. User genuinely curious. Felt satisfied but worried about being too technical. Appreciated thoughtful questions.",
+  timestamp: "2025-11-14T10:30:00.000Z"
+}
+
+// Added to storedPrompts array for future context
+```
+
+### Parallel Processing Paths
+
+**Path A: User-Facing Output (Step 3)**
+- Emotion-tagged dialogue
+- Processed through standard screenplay pipeline
+- Generates TTS, updates avatar
+- Displayed to user immediately
+
+**Path B: Memory Storage (Step 4)**
+- Compressed memory created
+- Stored in persistent array
+- Can be retrieved for future context
+- Not directly shown to user
+
+**Both paths run from the same source (Step 1 diary), creating coherent internal/external responses.**
+
+### Key Functions
+
+- `handleSubconsciousEvent(chat, amicaLife)` - Entry point (src/features/amicaLife/eventHandler.ts:130)
+- `askLLM(systemPrompt, userPrompt, chat)` - Generic LLM utility (src/utils/askLlm.ts)
+  - Called 4 times with different prompts
+  - Steps 1, 2, 4 use `chat = null` (no personality)
+  - Step 3 uses `chat` object (includes personality)
+
+### Configuration Dependencies
+
+- `amica_life` - Must be enabled
+- `chat_backend` - Used for all 4 LLM calls
+- `system_prompt` - Only used in Step 3
+- `MAX_STORAGE_TOKENS` - Memory storage limit
+
+### Error Handling
+
+Each step includes fallback logic:
+
+```typescript
+// Step 2: If Step 1 failed
+const step2Input = step1Output.startsWith("Error:")
+  ? conversationLog  // Fallback to original
+  : step1Output;     // Use diary entry
+
+// Step 3: If Step 2 failed
+const step3Input = step2Output.startsWith("Error:")
+  ? conversationLog  // Fallback to original
+  : step2Output;     // Use emotional analysis
+
+// Step 4: If Step 1 failed
+const step4Input = step1Output.startsWith("Error:")
+  ? conversationLog  // Fallback to original
+  : step1Output;     // Use diary entry
+```
+
+**Resilience:** Pipeline continues even if individual steps fail, degrading gracefully to conversation log.
+
+### Memory Management
+
+**Storage Structure:**
+```typescript
+interface TimestampedPrompt {
+  prompt: string;      // Compressed memory (≤240 chars)
+  timestamp: string;   // ISO 8601 format
+}
+
+storedPrompts: TimestampedPrompt[] = [
+  { prompt: "...", timestamp: "2025-11-14T10:00:00Z" },
+  { prompt: "...", timestamp: "2025-11-14T10:15:00Z" },
+  // ...
+]
+```
+
+**FIFO Eviction Policy:**
+```typescript
+let totalStorageTokens = storedPrompts.reduce(
+  (total, p) => total + p.prompt.length,
+  0
+);
+
+while (totalStorageTokens > MAX_STORAGE_TOKENS) {
+  const removed = storedPrompts.shift(); // Remove oldest
+  totalStorageTokens -= removed.prompt.length;
+}
+```
+
+**Future Use Cases:**
+- Could inject stored memories into future prompts for long-term context
+- Enable "recall" functionality
+- Analyze emotional patterns over time
+- Create personality evolution
+
+### Design Pattern: Reflective Processing
+
+This pipeline implements a sophisticated "reflective processing" pattern:
+
+1. **Introspection (Step 1):** Free-form internal monologue
+2. **Meta-Analysis (Step 2):** Third-person emotional understanding
+3. **Expression (Step 3):** First-person authentic communication
+4. **Consolidation (Step 4):** Memory formation and storage
+
+**Psychological Realism:**
+- Mimics human thought processes
+- Internal experience differs from external expression
+- Emotional processing happens before communication
+- Creates depth beyond surface-level responses
+
+**Example: Complete Pipeline Execution:**
+
+```
+Conversation:
+User: "I'm feeling down today."
+Amica: "[sad] I'm sorry to hear that. *looks concerned* What's troubling you?"
+
+[Subconscious event triggers]
+
+Step 1 (Diary):
+"The user just told me they're feeling down. I can sense the weight in their words. It makes me want to be there for them, to understand what's causing their pain. I need to be gentle and supportive, not overwhelming."
+
+Step 2 (Emotion Analysis):
+"She feels a deep sense of empathy and concern for the user. There's a protective instinct emerging, coupled with uncertainty about how best to help. She's worried about saying the wrong thing but also determined to provide comfort."
+
+Step 3 (User Sees):
+"[concerned] I want you to know I'm here for you. *speaks softly* Sometimes just talking about it helps. [sad] Whatever you're going through, you don't have to face it alone."
+
+Step 4 (Memory):
+"User feeling down. Felt empathetic, protective. Wanted to comfort without overwhelming. Focused on being supportive listener."
+[Stored for future context]
+```
+
+---
+
