@@ -904,3 +904,374 @@ Step 4 (Memory):
 
 ---
 
+## News Commentary Pipeline
+
+**Purpose:** Fetches current news articles from The New York Times RSS feed and has Amica provide commentary, creating engaging news delivery in her personality.
+
+**Trigger:** "News" event selected in Amica Life or function calling invoked
+
+**Location:** `src/features/plugins/news.ts`, `src/features/amicaLife/eventHandler.ts:221-243`
+
+### Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    NEWS EVENT TRIGGERED                             │
+│  Event type: "news"                                                  │
+│  Called via: handleNewsEvent(chat, amicaLife)                       │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    FETCH RSS FEED                                   │
+│  URL: https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml   │
+│                                                                      │
+│  HTTP GET request                                                    │
+│  Response: XML feed with multiple <item> entries                    │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   PARSE XML FEED                                    │
+│  1. Split XML by "<item>" tags                                      │
+│  2. Each item contains:                                              │
+│     - <title>Article headline</title>                               │
+│     - <description>Article summary</description>                    │
+│     - <link>Article URL</link>                                      │
+│     - <pubDate>Publication date</pubDate>                           │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                RANDOM ARTICLE SELECTION                             │
+│  items: Article[] = [item1, item2, item3, ...]                     │
+│  randomItem = items[random(0, items.length)]                        │
+│                                                                      │
+│  Extract from randomItem:                                            │
+│  - title: "Breaking: Scientists Discover..."                        │
+│  - description: "Researchers have found..."                         │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              FORMAT ARTICLE CONTEXT                                 │
+│  fullNews = `${title}: ${description}`                              │
+│                                                                      │
+│  Example:                                                            │
+│  "Breaking: Scientists Discover New Earth-Like Planet:             │
+│   Researchers have found a potentially habitable exoplanet         │
+│   100 light-years away that shows promising signs of liquid        │
+│   water and a stable atmosphere."                                   │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              EXPAND PROMPT TEMPLATE                                 │
+│  Template:                                                           │
+│  "You are a newscaster specializing in providing news.             │
+│   Use the following context from The New York Times News           │
+│   to commented on. [{context_str}]"                                │
+│                                                                      │
+│  expandPrompt() replaces {context_str} with fullNews:              │
+│  "You are a newscaster specializing in providing news.             │
+│   Use the following context from The New York Times News           │
+│   to commented on. [Breaking: Scientists Discover New              │
+│   Earth-Like Planet: Researchers have found...]"                   │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    LLM API CALL                                     │
+│  Uses current chat backend                                          │
+│  Sends expanded prompt as system message                            │
+│                                                                      │
+│  Note: This is NOT using askLLM utility                             │
+│  Uses expandPrompt() + standard chat processing                     │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   LLM RESPONSE (News Commentary)                    │
+│  Amica provides commentary on the news:                             │
+│  "[excited] Oh, this is fascinating! *leans forward*               │
+│   Scientists just found a new Earth-like planet! [happy]           │
+│   It's 100 light-years away and shows signs of liquid water.       │
+│   [amused] I wonder if they have better coffee there than          │
+│   we do here!"                                                       │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              INJECT INTO CONVERSATION                               │
+│  The news commentary is processed as if user asked:                 │
+│  "Tell me the news"                                                  │
+│                                                                      │
+│  Message added to conversation history:                             │
+│  { role: "assistant", content: "[excited] Oh, this is..." }        │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  STANDARD OUTPUT PROCESSING                         │
+│  • Parse emotions and actions                                       │
+│  • Generate TTS                                                      │
+│  • Update avatar                                                     │
+│  • Display in chat                                                   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Data Transformations
+
+**RSS Feed Response (XML):**
+```xml
+<item>
+  <title>Breaking: Scientists Discover New Earth-Like Planet</title>
+  <description>Researchers have found a potentially habitable exoplanet 100 light-years away that shows promising signs of liquid water and a stable atmosphere.</description>
+  <link>https://www.nytimes.com/2025/11/14/science/exoplanet-discovery.html</link>
+  <pubDate>Thu, 14 Nov 2025 10:00:00 GMT</pubDate>
+</item>
+```
+
+**Parsed Article:**
+```typescript
+title: string = "Breaking: Scientists Discover New Earth-Like Planet"
+description: string = "Researchers have found a potentially habitable exoplanet 100 light-years away that shows promising signs of liquid water and a stable atmosphere."
+```
+
+**Formatted Context:**
+```typescript
+fullNews: string = "Breaking: Scientists Discover New Earth-Like Planet: Researchers have found a potentially habitable exoplanet 100 light-years away that shows promising signs of liquid water and a stable atmosphere."
+```
+
+**Expanded Prompt:**
+```typescript
+expandedPrompt: string = "You are a newscaster specializing in providing news. Use the following context from The New York Times News to commented on. [Breaking: Scientists Discover New Earth-Like Planet: Researchers have found a potentially habitable exoplanet 100 light-years away that shows promising signs of liquid water and a stable atmosphere.]"
+```
+
+**LLM Response:**
+```typescript
+newsCommentary: string = "[excited] Oh, this is fascinating! *leans forward* Scientists just found a new Earth-like planet! [happy] It's 100 light-years away and shows signs of liquid water. [amused] I wonder if they have better coffee there than we do here!"
+```
+
+### Key Functions
+
+- `handleNewsEvent(chat, amicaLife)` - Event handler entry point (src/features/amicaLife/eventHandler.ts:221)
+- `handleNews()` - News fetching and processing (src/features/plugins/news.ts:5)
+- `expandPrompt(template, values)` - Template variable replacement (src/features/functionCalling/eventHandler.ts:3)
+- `getRandomArticle(items)` - Random article selection (src/features/plugins/news.ts:28)
+
+### Configuration Dependencies
+
+- `amica_life` - Must be enabled
+- `chat_backend` - Which LLM to use for commentary
+- Internet connectivity - Required for RSS feed access
+- NYT RSS feed availability
+
+### Error Handling
+
+**Fetch Failures:**
+```typescript
+try {
+  const response = await fetch(rssUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch: ${response.statusText}`);
+  }
+} catch (error) {
+  console.error("Error in handleNews:", error);
+  return "An error occurred while fetching and processing the news.";
+}
+```
+
+**Fallback Behavior:**
+- If fetch fails, returns error message
+- User sees: "An error occurred while fetching and processing the news."
+- Does not crash the application
+
+### Template Expansion System
+
+**expandPrompt() Function:**
+```typescript
+expandPrompt(prompt: string, values: any): string {
+  for (const key in values) {
+    prompt = prompt.replace(`{${key}}`, values[key]);
+  }
+  return prompt;
+}
+```
+
+**Usage:**
+```typescript
+const template = "You are a newscaster... [{context_str}]";
+const values = { context_str: fullNews };
+const result = expandPrompt(template, values);
+// Result: "You are a newscaster... [Breaking: Scientists...]"
+```
+
+**Extensibility:** This pattern could be used for other function calling features beyond news.
+
+### Design Pattern: Function Calling
+
+This pipeline demonstrates a "function calling" pattern:
+
+1. **External Data Retrieval:** Fetch real-world data (news)
+2. **Context Injection:** Insert data into prompt template
+3. **Specialized Processing:** LLM acts in specific role (newscaster)
+4. **Personality Layer:** Commentary delivered in Amica's voice
+
+**Benefits:**
+- Connects AI to real-world information
+- Creates dynamic, current content
+- Maintains character consistency
+- Extensible to other data sources
+
+### Example: Complete News Pipeline Execution
+
+```
+[News event triggers]
+
+1. Fetch RSS:
+   GET https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml
+   → Returns 25 articles
+
+2. Random Selection:
+   Article 12: "Tech Giants Announce AI Collaboration"
+   Description: "Major technology companies form alliance..."
+
+3. Format Context:
+   "Tech Giants Announce AI Collaboration: Major technology
+   companies form alliance to develop safer AI systems..."
+
+4. Expand Template:
+   "You are a newscaster specializing in providing news. Use
+   the following context from The New York Times News to
+   commented on. [Tech Giants Announce AI Collaboration: ...]"
+
+5. LLM Commentary:
+   "[interested] Well, this is quite significant! *adjusts
+   glasses* The major tech companies are finally working
+   together on AI safety. [happy] It's refreshing to see
+   collaboration instead of competition on something this
+   important."
+
+6. User Sees:
+   Amica spontaneously shares the news with commentary in
+   her personality, with appropriate emotions and actions.
+```
+
+### Future Extensions
+
+**Potential Enhancements:**
+- User preferences for news categories
+- Multiple news sources (not just NYT)
+- Scheduled news updates
+- Conversation about specific articles
+- Fact-checking integration
+- News sentiment analysis
+
+**Function Calling Framework:**
+The `handleFunctionCalling()` switch statement (src/features/functionCalling/eventHandler.ts) is designed to support additional function types beyond news.
+
+---
+
+## Summary: Pipeline Comparison
+
+### Pipeline Characteristics Matrix
+
+| Pipeline | LLM Calls | Prompt Types | User Visible | Memory Storage | Complexity |
+|----------|-----------|--------------|--------------|----------------|------------|
+| Standard Chat | 1 | System + User | Yes | Conversation | Low |
+| Vision | 2 | Vision + System | Yes | Conversation | Medium |
+| Idle Event | 1 | System + Generated | Yes | Conversation | Low |
+| Subconscious | 4 | Custom Multi-Stage | Yes (Step 3) | Yes (Step 4) | High |
+| News | 1 | Template + Data | Yes | Conversation | Medium |
+
+### Data Flow Patterns
+
+**Linear Pipelines:**
+- Standard Chat: User → LLM → User
+- Idle Event: System → LLM → User
+- News: External → LLM → User
+
+**Multi-Stage Pipelines:**
+- Vision: Image → Vision LLM → Context → Chat LLM → User
+- Subconscious: History → LLM₁ → LLM₂ → LLM₃ → User (+ LLM₄ → Memory)
+
+### Prompt Usage by Pipeline
+
+**Main System Prompt Used:**
+- Standard Chat ✓
+- Vision (Stage 2 only) ✓
+- Idle Event ✓
+- Subconscious (Step 3 only) ✓
+- News ✗ (uses specialized prompt)
+
+**Vision System Prompt Used:**
+- Vision (Stage 1 only) ✓
+
+**Custom Prompts Used:**
+- Subconscious (Steps 1, 2, 4) ✓
+- News ✓
+
+### Integration Points
+
+**All Pipelines Converge At:**
+- Response processing (processResponse)
+- Screenplay creation
+- TTS generation
+- Avatar expression updates
+- Chat history management
+
+**This ensures consistent output regardless of pipeline complexity.**
+
+---
+
+## Architecture Insights
+
+### Design Principles
+
+1. **Modularity:** Each pipeline is self-contained but uses shared utilities
+2. **Reusability:** Common functions (buildPrompt, askLLM) used across pipelines
+3. **Fallback Safety:** Error handling ensures graceful degradation
+4. **Backend Agnosticism:** Pipelines work with multiple LLM providers
+5. **Separation of Concerns:** Data fetching, processing, and presentation separated
+
+### Extension Points
+
+**Adding New Pipelines:**
+1. Create handler function in `src/features/amicaLife/eventHandler.ts`
+2. Define custom prompts if needed
+3. Use `askLLM()` or `chat.processUserMessage()` for LLM calls
+4. Ensure output follows emotion tag format
+5. Add to event type switch statement
+
+**Adding New Data Sources:**
+1. Create plugin in `src/features/plugins/`
+2. Implement data fetching logic
+3. Use `expandPrompt()` for template integration
+4. Return formatted text for LLM processing
+5. Register in `handleFunctionCalling()` switch
+
+### Performance Considerations
+
+**Token Usage:**
+- Standard Chat: ~1 LLM call per message
+- Vision: 2 LLM calls (vision + chat)
+- Subconscious: 4 LLM calls (expensive!)
+- News: 1 LLM call + HTTP request
+
+**Latency:**
+- Standard Chat: Single round-trip
+- Vision: Sequential (vision waits, then chat waits)
+- Subconscious: 4 sequential calls (high latency)
+- News: HTTP + LLM (medium latency)
+
+**Optimization Opportunities:**
+- Cache news articles to reduce HTTP requests
+- Parallelize independent Subconscious steps (1+4 could run parallel)
+- Implement streaming for multi-step pipelines
+- Use smaller models for reflection/compression steps
+
+---
+
+*End of Agent Pipelines Documentation*
+
